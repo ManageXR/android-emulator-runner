@@ -101,9 +101,15 @@ async function run() {
     console.log(`Emulator boot timeout: ${emulatorBootTimeout}`);
 
     // Emulator port to use
-    port = parseInt(core.getInput('emulator-port'), 10);
-    checkPort(port);
-    console.log(`emulator port: ${port}`);
+    const emulatorPortInput = core.getInput('emulator-port');
+    if (emulatorPortInput) {
+      port = parseInt(emulatorPortInput, 10);
+      checkPort(port);
+      console.log(`emulator port: ${port}`);
+    } else {
+      port = MIN_PORT; // Use default port when none specified
+      console.log(`emulator port: ${port} (default)`);
+    }
 
     // emulator options
     const emulatorOptions = core.getInput('emulator-options').trim();
