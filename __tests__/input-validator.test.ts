@@ -1,39 +1,5 @@
 import * as validator from '../src/input-validator';
-
-describe('api-level validator tests', () => {
-  it('Throws if api-level is not a number', () => {
-    const func = () => {
-      validator.checkApiLevel('api');
-    };
-    expect(func).toThrowError(`Unexpected API level: 'api'.`);
-  });
-
-  it('Throws if api-level is not an integer', () => {
-    const func = () => {
-      validator.checkApiLevel('29.1');
-    };
-    expect(func).toThrowError(`Unexpected API level: '29.1'.`);
-  });
-
-  it('Throws if api-level is lower than min API supported', () => {
-    const func = () => {
-      validator.checkApiLevel('14');
-    };
-    expect(func).toThrowError(`Minimum API level supported is ${validator.MIN_API_LEVEL}.`);
-  });
-
-  it('Validates successfully with valid api-level', () => {
-    const func1 = () => {
-      validator.checkApiLevel('15');
-    };
-    expect(func1).not.toThrow();
-
-    const func2 = () => {
-      validator.checkApiLevel('29');
-    };
-    expect(func2).not.toThrow();
-  });
-});
+import { MAX_PORT, MIN_PORT } from '../src/input-validator';
 
 describe('target validator tests', () => {
   it('Throws if target is unknown', () => {
@@ -88,6 +54,21 @@ describe('target validator tests', () => {
       validator.checkTarget('google-tv');
     };
     expect(func9).not.toThrow();
+
+    const func10 = () => {
+      validator.checkTarget('android-automotive');
+    };
+    expect(func10).not.toThrow();
+
+    const func11 = () => {
+      validator.checkTarget('android-automotive-playstore');
+    };
+    expect(func11).not.toThrow();
+
+    const func12 = () => {
+      validator.checkTarget('android-desktop');
+    };
+    expect(func12).not.toThrow();
   });
 });
 
@@ -161,6 +142,33 @@ describe('force-avd-creation validator tests', () => {
       validator.checkForceAvdCreation('false');
     };
     expect(func2).not.toThrow();
+  });
+});
+
+describe('emulator-port validator tests', () => {
+  it('Validates if emulator-port is even and in range', () => {
+    const func = () => {
+      validator.checkPort(5554);
+    };
+    expect(func).not.toThrow();
+  });
+  it('Throws if emulator-port is lower than MIN_PORT', () => {
+    const func = () => {
+      validator.checkPort(MIN_PORT - 2);
+    };
+    expect(func).toThrow();
+  });
+  it('Throws if emulator-port is higher than MAX_PORT', () => {
+    const func = () => {
+      validator.checkPort(MAX_PORT + 2);
+    };
+    expect(func).toThrow();
+  });
+  it('Throws if emulator-port is odd', () => {
+    const func = () => {
+      validator.checkPort(5555);
+    };
+    expect(func).toThrow();
   });
 });
 

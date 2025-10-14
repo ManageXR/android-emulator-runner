@@ -1,7 +1,6 @@
 import * as core from '@actions/core';
 import { installAndroidSdk } from './sdk-installer';
 import {
-  checkApiLevel,
   checkTarget,
   checkArch,
   checkDisableAnimations,
@@ -12,6 +11,8 @@ import {
   checkChannel,
   checkEnableHardwareKeyboard,
   checkDiskSize,
+  checkPort,
+  MIN_PORT,
 } from './input-validator';
 import { launchEmulator, killEmulator } from './emulator-manager';
 import * as exec from '@actions/exec';
@@ -20,6 +21,7 @@ import { getChannelId } from './channel-id-mapper';
 import { accessSync, constants } from 'fs';
 
 async function run() {
+  let port: number = MIN_PORT;
   try {
     console.log(`::group::Configure emulator`);
     let linuxSupportKVM = false;
@@ -40,10 +42,14 @@ async function run() {
     }
 
     // API level of the platform and system image
-    const apiLevelInput = core.getInput('api-level', { required: true });
-    checkApiLevel(apiLevelInput);
-    const apiLevel = Number(apiLevelInput);
+    const apiLevel = core.getInput('api-level', { required: true });
     console.log(`API level: ${apiLevel}`);
+
+    let systemImageApiLevel = core.getInput('system-image-api-level');
+    if (!systemImageApiLevel) {
+      systemImageApiLevel = apiLevel;
+    }
+    console.log(`System image API level: ${systemImageApiLevel}`);
 
     // target of the system image
     const targetInput = core.getInput('target');
@@ -89,6 +95,21 @@ async function run() {
     checkForceAvdCreation(forceAvdCreationInput);
     const forceAvdCreation = forceAvdCreationInput === 'true';
     console.log(`force avd creation: ${forceAvdCreation}`);
+
+    // Emulator boot timeout seconds
+    const emulatorBootTimeout = parseInt(core.getInput('emulator-boot-timeout'), 10);
+    console.log(`Emulator boot timeout: ${emulatorBootTimeout}`);
+
+    // Emulator port to use
+    const emulatorPortInput = core.getInput('emulator-port');
+    if (emulatorPortInput) {
+      port = parseInt(emulatorPortInput, 10);
+      checkPort(port);
+      console.log(`emulator port: ${port}`);
+    } else {
+      port = MIN_PORT; // Use default port when none specified
+      console.log(`emulator port: ${port} (default)`);
+    }
 
     // emulator options
     const emulatorOptions = core.getInput('emulator-options').trim();
@@ -174,7 +195,7 @@ async function run() {
     console.log(`::endgroup::`);
 
     // install SDK
-    await installAndroidSdk(apiLevel, target, arch, channelId, emulatorBuild, ndkVersion, cmakeVersion);
+    await installAndroidSdk(apiLevel, systemImageApiLevel, target, arch, channelId, emulatorBuild, ndkVersion, cmakeVersion);
 
     // execute pre emulator launch script if set
     if (preEmulatorLaunchScripts !== undefined) {
@@ -195,7 +216,7 @@ async function run() {
 
     // launch an emulator
     await launchEmulator(
-      apiLevel,
+      systemImageApiLevel,
       target,
       arch,
       profile,
@@ -206,6 +227,8 @@ async function run() {
       diskSize,
       avdName,
       forceAvdCreation,
+      emulatorBootTimeout,
+      port,
       emulatorOptions,
       disableAnimations,
       disableSpellchecker,
@@ -222,17 +245,19 @@ async function run() {
       for (const script of scripts) {
         // use array form to avoid various quote escaping problems
         // caused by exec(`sh -c "${script}"`)
-        await exec.exec('sh', ['-c', script]);
+        await exec.exec('sh', ['-c', script], {
+          env: { ...process.env, EMULATOR_PORT: `${port}`, ANDROID_SERIAL: `emulator-${port}` },
+        });
       }
     } catch (error) {
       core.setFailed(error instanceof Error ? error.message : (error as string));
     }
 
     // finally kill the emulator
-    await killEmulator();
+    await killEmulator(port);
   } catch (error) {
     // kill the emulator so the action can exit
-    await killEmulator();
+    await killEmulator(port);
     core.setFailed(error instanceof Error ? error.message : (error as string));
   }
 }
