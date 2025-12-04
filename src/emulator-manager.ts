@@ -77,9 +77,6 @@ export async function launchEmulator(
       },
     });
 
-    // Wait a few seconds for emulator process to initialize before polling
-    await delay(5000);
-
     // wait for emulator to complete booting
     await waitForDevice(port, emulatorBootTimeout);
     await adb(port, `shell input keyevent 82`);
@@ -123,11 +120,53 @@ async function adb(port: number, command: string): Promise<number> {
  * Wait for emulator to boot.
  */
 async function waitForDevice(port: number, emulatorBootTimeout: number): Promise<void> {
-  let booted = false;
-  let attempts = 0;
+  const startTime = Date.now();
   const retryInterval = 2; // retry every 2 seconds
-  const maxAttempts = emulatorBootTimeout / 2;
+
+  // Step 1: Poll until device appears in ADB
+  console.log('Waiting for emulator device to connect...');
+  let deviceConnected = false;
+
+  while (!deviceConnected) {
+    const elapsedSeconds = (Date.now() - startTime) / 1000;
+    if (elapsedSeconds > emulatorBootTimeout) {
+      throw new Error('Timeout waiting for emulator device to connect.');
+    }
+
+    try {
+      // Try to get device state - will fail if device doesn't exist
+      let state = '';
+      await exec.exec(`adb -s emulator-${port} get-state`, [], {
+        listeners: {
+          stdout: (data: Buffer) => {
+            state += data.toString();
+          },
+        },
+      });
+      if (state.trim() === 'device') {
+        deviceConnected = true;
+      }
+    } catch (error) {
+      // Device not found yet, keep waiting
+      console.warn(error instanceof Error ? error.message : error);
+    }
+
+    if (!deviceConnected) {
+      await delay(retryInterval * 1000);
+    }
+  }
+
+  console.log('Device connected. Waiting for boot to complete...');
+
+  // Step 2: Poll for boot completion
+  let booted = false;
+
   while (!booted) {
+    const elapsedSeconds = (Date.now() - startTime) / 1000;
+    if (elapsedSeconds > emulatorBootTimeout) {
+      throw new Error('Timeout waiting for emulator to boot.');
+    }
+
     try {
       let result = '';
       await exec.exec(`adb -s emulator-${port} shell getprop sys.boot_completed`, [], {
@@ -140,18 +179,14 @@ async function waitForDevice(port: number, emulatorBootTimeout: number): Promise
       if (result.trim() === '1') {
         console.log('Emulator booted.');
         booted = true;
-        break;
       }
     } catch (error) {
       console.warn(error instanceof Error ? error.message : error);
     }
 
-    if (attempts < maxAttempts) {
+    if (!booted) {
       await delay(retryInterval * 1000);
-    } else {
-      throw new Error(`Timeout waiting for emulator to boot.`);
     }
-    attempts++;
   }
 }
 
